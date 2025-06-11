@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from routers.cases import case_router
 from routers.reports import report_router
 from routers.analytics import analytics_router
-
+from routers import auth, victims
 
 app = FastAPI(
     title="Human Rights MIS",
@@ -24,6 +24,9 @@ app.add_middleware(
 app.include_router(case_router, prefix="/cases", tags=["Case Management"])
 app.include_router(report_router, prefix="/reports", tags=["Incident Reporting"])
 app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
+app.include_router(auth.router)
+app.include_router(victims.router)
+
 
 app.mount("/media", StaticFiles(directory="media"), name="media")
 

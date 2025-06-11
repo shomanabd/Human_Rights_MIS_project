@@ -12,7 +12,7 @@ def run_fastapi():
 
 def run_streamlit():
     print("[STREAMLIT] Launching frontend interface...")
-    subprocess.run(["streamlit", "run", "streamlit_app.py"])
+    subprocess.run(["python", "-m", "streamlit", "run", "streamlit_app.py"])
 
 
 if __name__ == "__main__":
