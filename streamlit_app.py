@@ -21,6 +21,466 @@ st.title("\U0001f6e1️ Human Rights Monitor MIS")
 
 ACCESS_CODES = {"Lawyer": "LEGAL123", "Admin": "ADMIN123"}
 
+import streamlit as st
+import requests
+import json
+from datetime import datetime, date
+from typing import Optional, Dict, Any
+
+# Add this to your existing Streamlit code where you handle the radio button selection
+
+def create_victim_interface():
+    """Create the victim/witness management interface"""
+    st.header("👥 Victim/Witness Management")
+
+    # Sub-tabs for different victim operations
+    victim_action = st.radio(
+        "Select Action:",
+        ["Register New", "View List", "Search by Case", "Risk Assessment History"],
+        horizontal=True
+    )
+
+    if victim_action == "Register New":
+        create_victim_form()
+    elif victim_action == "View List":
+        list_victims_interface()
+    elif victim_action == "Search by Case":
+        victims_by_case_interface()
+    elif victim_action == "Risk Assessment History":
+        risk_history_interface()
+
+def create_victim_form():
+    """Form to create a new victim/witness record"""
+    st.subheader("📝 Register New Victim/Witness")
+
+    with st.form("victim_form"):
+        # Basic Information
+        st.markdown("### Basic Information")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            victim_type = st.selectbox(
+                "Type*",
+                ["victim", "witness", "both"],
+                help="Select whether person is a victim, witness, or both"
+            )
+
+            anonymous = st.checkbox(
+                "Anonymous Registration",
+                value=False,
+                help="Check if the person wishes to remain anonymous"
+            )
+
+        with col2:
+            pseudonym = st.text_input(
+                "Pseudonym/Code Name",
+                help="Alternative name for identification (especially for anonymous cases)"
+            )
+
+        # Demographics (Optional)
+        st.markdown("### Demographics (Optional)")
+        demo_col1, demo_col2 = st.columns(2)
+
+        with demo_col1:
+            gender = st.selectbox(
+                "Gender",
+                ["", "Male", "Female", "Other", "Prefer not to say"],
+                help="Optional demographic information"
+            )
+            age = st.number_input(
+                "Age",
+                min_value=0,
+                max_value=120,
+                value=None,
+                help="Age of the person"
+            )
+
+        with demo_col2:
+            ethnicity = st.text_input("Ethnicity")
+            occupation = st.text_input("Occupation")
+
+        # Contact Information (Optional)
+        st.markdown("### Contact Information (Optional)")
+        contact_col1, contact_col2 = st.columns(2)
+
+        with contact_col1:
+            email = st.text_input("Email")
+            phone = st.text_input("Phone Number")
+
+        with contact_col2:
+            secure_messaging = st.text_input("Secure Messaging Contact")
+            preferred_contact = st.selectbox(
+                "Preferred Contact Method",
+                ["", "email", "phone", "secure_messaging", "in_person"]
+            )
+
+        # Risk Assessment (Required)
+        st.markdown("### Risk Assessment* (Required)")
+        risk_col1, risk_col2 = st.columns(2)
+
+        with risk_col1:
+            risk_level = st.selectbox(
+                "Risk Level*",
+                ["low", "medium", "high"],
+                help="Assessment of threat level to the person"
+            )
+
+            protection_needed = st.checkbox(
+                "Protection Needed",
+                help="Check if immediate protection is required"
+            )
+
+        with risk_col2:
+            assessed_by = st.text_input(
+                "Assessed By",
+                help="Name of person conducting risk assessment"
+            )
+
+        # Threats
+        threats_text = st.text_area(
+            "Specific Threats (one per line)",
+            help="List specific threats or risk factors, one per line"
+        )
+
+        risk_notes = st.text_area(
+            "Risk Assessment Notes",
+            help="Additional notes about the risk assessment"
+        )
+
+        # Support Services
+        st.markdown("### Support Services")
+
+        # Simple support services input
+        support_services = []
+        num_services = st.number_input("Number of Support Services", min_value=0, max_value=10, value=0)
+
+        for i in range(int(num_services)):
+            st.markdown(f"**Service {i+1}**")
+            service_col1, service_col2, service_col3 = st.columns(3)
+
+            with service_col1:
+                service_type = st.text_input(f"Service Type {i+1}", key=f"service_type_{i}")
+            with service_col2:
+                provider = st.text_input(f"Provider {i+1}", key=f"provider_{i}")
+            with service_col3:
+                status = st.selectbox(f"Status {i+1}", ["pending", "active", "completed", "cancelled"], key=f"status_{i}")
+
+            service_notes = st.text_area(f"Service Notes {i+1}", key=f"service_notes_{i}")
+
+            if service_type and provider:
+                support_services.append({
+                    "type": service_type,
+                    "provider": provider,
+                    "status": status,
+                    "notes": service_notes if service_notes else None
+                })
+
+        # General Notes
+        general_notes = st.text_area(
+            "General Notes",
+            help="Any additional information about the victim/witness"
+        )
+
+        # Submit button
+        submitted = st.form_submit_button("Register Victim/Witness", type="primary")
+
+        if submitted:
+            # Prepare the data
+            victim_data = prepare_victim_data(
+                victim_type, anonymous, pseudonym, gender, age, ethnicity, occupation,
+                email, phone, secure_messaging, preferred_contact, risk_level,
+                protection_needed, assessed_by, threats_text, risk_notes,
+                support_services, general_notes
+            )
+
+            # Submit to API
+            submit_victim_data(victim_data)
+
+def prepare_victim_data(victim_type, anonymous, pseudonym, gender, age, ethnicity, occupation,
+                       email, phone, secure_messaging, preferred_contact, risk_level,
+                       protection_needed, assessed_by, threats_text, risk_notes,
+                       support_services, general_notes):
+    """Prepare victim data for API submission"""
+
+    # Parse threats from text
+    threats = [threat.strip() for threat in threats_text.split('\n') if threat.strip()] if threats_text else []
+
+    # Prepare demographics
+    demographics = {}
+    if gender: demographics["gender"] = gender
+    if age: demographics["age"] = int(age)
+    if ethnicity: demographics["ethnicity"] = ethnicity
+    if occupation: demographics["occupation"] = occupation
+
+    # Prepare contact info
+    contact_info = {}
+    if email: contact_info["email"] = email
+    if phone: contact_info["phone"] = phone
+    if secure_messaging: contact_info["secure_messaging"] = secure_messaging
+    if preferred_contact: contact_info["preferred_contact"] = preferred_contact
+
+    # Prepare risk assessment
+    risk_assessment = {
+        "level": risk_level,
+        "threats": threats,
+        "protection_needed": protection_needed
+    }
+    if risk_notes: risk_assessment["notes"] = risk_notes
+    if assessed_by: risk_assessment["assessed_by"] = assessed_by
+
+    # Prepare final data structure
+    victim_data = {
+        "type": victim_type,
+        "anonymous": anonymous,
+        "risk_assessment": risk_assessment
+    }
+
+    if pseudonym: victim_data["pseudonym"] = pseudonym
+    if demographics: victim_data["demographics"] = demographics
+    if contact_info: victim_data["contact_info"] = contact_info
+    if support_services: victim_data["support_services"] = support_services
+    if general_notes: victim_data["notes"] = general_notes
+
+    return victim_data
+
+def submit_victim_data(victim_data):
+    """Submit victim data to the API"""
+    try:
+        # Replace with your actual API endpoint
+        API_BASE_URL = "http://your-api-base-url"  # Update this
+
+        # You'll need to get the auth token (implement based on your auth system)
+        auth_token = get_auth_token()  # Implement this function
+
+        headers = {
+            "Authorization": f"Bearer {auth_token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(
+            f"{API_BASE_URL}/victims/",
+            headers=headers,
+            json=victim_data
+        )
+
+        if response.status_code == 200:
+            st.success("✅ Victim/Witness record created successfully!")
+            st.json(response.json())
+        else:
+            st.error(f"❌ Error creating record: {response.status_code}")
+            st.error(response.text)
+
+    except Exception as e:
+        st.error(f"❌ Error submitting data: {str(e)}")
+
+def list_victims_interface():
+    """Interface to list and filter victims"""
+    st.subheader("📋 Victim/Witness List")
+
+    # Filters
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        risk_filter = st.selectbox("Filter by Risk Level", ["All", "low", "medium", "high"])
+
+    with col2:
+        type_filter = st.selectbox("Filter by Type", ["All", "victim", "witness", "both"])
+
+    with col3:
+        skip = st.number_input("Skip records", min_value=0, value=0)
+
+    with col4:
+        limit = st.number_input("Limit records", min_value=1, max_value=100, value=10)
+
+    if st.button("Load Victims", type="primary"):
+        load_victims_list(risk_filter, type_filter, skip, limit)
+
+def load_victims_list(risk_filter, type_filter, skip, limit):
+    """Load and display victims list"""
+    try:
+        API_BASE_URL = "http://your-api-base-url"  # Update this
+        auth_token = get_auth_token()  # Implement this function
+
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
+        params = {"skip": skip, "limit": limit}
+        if risk_filter != "All":
+            params["risk_level"] = risk_filter
+        if type_filter != "All":
+            params["victim_type"] = type_filter
+
+        response = requests.get(f"{API_BASE_URL}/victims/", headers=headers, params=params)
+
+        if response.status_code == 200:
+            victims = response.json()
+
+            if victims:
+                st.success(f"Found {len(victims)} victims/witnesses")
+
+                for victim in victims:
+                    with st.expander(f"ID: {victim.get('_id', 'N/A')} - Type: {victim.get('type', 'N/A')} - Risk: {victim.get('risk_assessment', {}).get('level', 'N/A')}"):
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            st.write(f"**Type:** {victim.get('type', 'N/A')}")
+                            st.write(f"**Anonymous:** {victim.get('anonymous', False)}")
+                            st.write(f"**Pseudonym:** {victim.get('pseudonym', 'N/A')}")
+                            st.write(f"**Risk Level:** {victim.get('risk_assessment', {}).get('level', 'N/A')}")
+                            st.write(f"**Protection Needed:** {victim.get('risk_assessment', {}).get('protection_needed', False)}")
+
+                        with col2:
+                            st.write(f"**Cases Involved:** {len(victim.get('cases_involved', []))}")
+                            st.write(f"**Support Services:** {len(victim.get('support_services', []))}")
+                            st.write(f"**Created:** {victim.get('created_at', 'N/A')}")
+                            st.write(f"**Updated:** {victim.get('updated_at', 'N/A')}")
+
+                        if victim.get('notes'):
+                            st.write(f"**Notes:** {victim.get('notes')}")
+            else:
+                st.info("No victims/witnesses found with the current filters.")
+
+        else:
+            st.error(f"Error loading data: {response.status_code}")
+
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+
+def victims_by_case_interface():
+    """Interface to search victims by case ID"""
+    st.subheader("🔍 Search Victims by Case")
+
+    case_id = st.text_input("Enter Case ID", help="Enter the case ID to find associated victims/witnesses")
+
+    if st.button("Search", type="primary") and case_id:
+        search_victims_by_case(case_id)
+
+def search_victims_by_case(case_id):
+    """Search for victims associated with a specific case"""
+    try:
+        API_BASE_URL = "http://your-api-base-url"  # Update this
+        auth_token = get_auth_token()  # Implement this function
+
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
+        response = requests.get(f"{API_BASE_URL}/victims/case/{case_id}", headers=headers)
+
+        if response.status_code == 200:
+            victims = response.json()
+
+            if victims:
+                st.success(f"Found {len(victims)} victims/witnesses for case {case_id}")
+
+                for victim in victims:
+                    with st.expander(f"Victim ID: {victim.get('_id', 'N/A')}"):
+                        st.json(victim)
+            else:
+                st.info(f"No victims/witnesses found for case {case_id}")
+
+        else:
+            st.error(f"Error searching: {response.status_code}")
+
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+
+def risk_history_interface():
+    """Interface to view risk assessment history"""
+    st.subheader("📊 Risk Assessment History")
+
+    victim_id = st.text_input("Enter Victim ID", help="Enter the victim ID to view risk assessment history")
+
+    if st.button("Get History", type="primary") and victim_id:
+        get_risk_history(victim_id)
+
+def get_risk_history(victim_id):
+    """Get risk assessment history for a victim"""
+    try:
+        API_BASE_URL = "http://your-api-base-url"  # Update this
+        auth_token = get_auth_token()  # Implement this function
+
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
+        response = requests.get(f"{API_BASE_URL}/victims/{victim_id}/risk-history", headers=headers)
+
+        if response.status_code == 200:
+            history = response.json()
+
+            if history:
+                st.success(f"Found {len(history)} risk assessment records")
+
+                for i, assessment in enumerate(history, 1):
+                    with st.expander(f"Assessment {i} - {assessment.get('assessed_at', 'N/A')}"):
+                        st.json(assessment)
+            else:
+                st.info(f"No risk history found for victim {victim_id}")
+
+        else:
+            st.error(f"Error getting history: {response.status_code}")
+
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+
+def get_auth_token():
+    """
+    Get authentication token - implement based on your auth system
+    This is a placeholder function
+    """
+    # You need to implement this based on your authentication system
+    # For example, you might store the token in session state after login
+    if 'auth_token' in st.session_state:
+        return st.session_state.auth_token
+    else:
+        st.error("Authentication required. Please log in first.")
+        return None
+
+# Integration with your existing code
+def main():
+    """Main function showing how to integrate with your existing radio button logic"""
+
+    # Your existing code structure
+    role = "Public"  # or however you determine the role
+
+    if role == "Public":
+        ir_tab = st.radio(
+            "Choose action:",
+            ["Submit Report", "Analytics", "Victim/Witness"],
+            horizontal=True
+        )
+
+        if ir_tab == "Submit Report":
+            # Your existing submit report code
+            pass
+        elif ir_tab == "Analytics":
+            # Your existing analytics code
+            pass
+        elif ir_tab == "Victim/Witness":
+            create_victim_interface()
+
+# Add this CSS for better styling (optional)
+def add_victim_css():
+    """Add custom CSS for better victim interface styling"""
+    st.markdown("""
+    <style>
+    .victim-card {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .risk-high {
+        border-left: 4px solid #ff4b4b;
+    }
+
+    .risk-medium {
+        border-left: 4px solid #ffa500;
+    }
+
+    .risk-low {
+        border-left: 4px solid #00cc44;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 
 def generate_csv_download(data, filename="export.csv"):
     output = io.StringIO()
@@ -436,16 +896,19 @@ if "\U0001f4cb Incident Reporting" in available_tabs:
 
         if role == "Public":
             ir_tab = st.radio(
-                "Choose action:", [" Submit Report", " Analytics"], horizontal=True
+                "Choose action:", [" Submit Report", " Analytics","Victim/Witness"], horizontal=True
             )
         elif role == "NGO Worker":
-            ir_tab = st.radio("Choose action:", [" Submit Report", " View Reports"])
+            ir_tab = st.radio("Choose action:", [" Submit Report", " View Reports",])
         else:
             ir_tab = st.radio(
                 "Choose action:",
                 [" Submit Report", " View Reports", " Analytics"],
                 horizontal=True,
             )
+
+        if ir_tab == "Victim/Witness":
+                create_victim_interface()
 
         if ir_tab == " Submit Report":
 
@@ -800,6 +1263,337 @@ if "\U0001f5a5 Victim/Witness Database" in available_tabs and role == "Admin":
         )
 
 
+
+if "\U0001f5a5 Victim/Witness Database" in available_tabs and role == "Admin":
+    with tabs[available_tabs.index("\U0001f5a5 Victim/Witness Database")]:
+        st.header("\U0001f5a5 Victim/Witness Database Management")
+
+        vw_tab = st.radio(
+            "Choose action:",
+            ["👥 Add Victim/Witness", "📋 View Records", "✏️ Edit Record", "🗑️ Delete Record"],
+            horizontal=True,
+        )
+
+        if vw_tab == "👥 Add Victim/Witness":
+            st.subheader("Add New Victim/Witness Record")
+
+            with st.form("add_victim_form", clear_on_submit=True):
+                # Basic Information
+                st.subheader("Basic Information")
+                col1, col2 = st.columns(2)
+                with col1:
+                    victim_type = st.selectbox(
+                        "Type*", ["victim", "witness", "both"],
+                        help="Required field"
+                    )
+                    anonymous = st.selectbox(
+                        "Anonymous*", ["true", "false"],
+                        help="Required field"
+                    )
+                with col2:
+                    pseudonym = st.text_input(
+                        "Name/Pseudonym*",
+                        help="Real name or pseudonym for identification"
+                    )
+
+                # Demographics
+                st.subheader("Demographics")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    gender = st.selectbox(
+                        "Gender",
+                        ["", "male", "female", "non-binary", "prefer_not_to_say"]
+                    )
+                with col2:
+                    age = st.number_input("Age", min_value=0, max_value=120, value=None)
+                with col3:
+                    ethnicity = st.text_input("Ethnicity/Background")
+
+                occupation = st.text_input("Occupation")
+
+                # Contact Information (only if not anonymous)
+                if st.form_submit_button("Check Anonymous Status", use_container_width=False):
+                    pass  # This will refresh the form to show/hide contact fields
+
+                show_contact = (anonymous == "false")
+                if show_contact:
+                    st.subheader("Contact Information")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        email = st.text_input("Email")
+                        phone = st.text_input("Phone")
+                    with col2:
+                        preferred_contact = st.selectbox(
+                            "Preferred Contact Method",
+                            ["email", "phone", "both"]
+                        )
+                else:
+                    email = phone = preferred_contact = None
+
+                # Risk Assessment
+                st.subheader("Risk Assessment")
+                col1, col2 = st.columns(2)
+                with col1:
+                    risk_level = st.selectbox(
+                        "Risk Level*",
+                        ["low", "medium", "high"],
+                        help="Required field"
+                    )
+                    protection_needed = st.selectbox(
+                        "Protection Needed*",
+                        ["true", "false"],
+                        help="Required field"
+                    )
+                with col2:
+                    threats = st.multiselect(
+                        "Identified Threats",
+                        ["intimidation", "surveillance", "physical_threats",
+                         "legal_threats", "economic_threats", "family_threats", "other"]
+                    )
+
+                risk_notes = st.text_area("Risk Assessment Notes")
+
+                # Additional Notes
+                st.subheader("Additional Information")
+                notes = st.text_area("General Notes")
+
+                # Case Association
+                case_id = st.text_input("Associated Case ID (Optional)")
+
+                submit = st.form_submit_button("Add Victim/Witness Record")
+
+                if submit:
+                    if not victim_type or not anonymous or not pseudonym or not risk_level or not protection_needed:
+                        st.error("Please fill all required fields (marked with *)")
+                    else:
+                        # Prepare victim data
+                        victim_data = {
+                            "type": victim_type,
+                            "anonymous": anonymous == "true",
+                            "pseudonym": pseudonym,
+                            "demographics": {
+                                "gender": gender if gender else None,
+                                "age": age if age else None,
+                                "ethnicity": ethnicity if ethnicity else None,
+                                "occupation": occupation if occupation else None
+                            },
+                            "risk_assessment": {
+                                "level": risk_level,
+                                "threats": threats,
+                                "protection_needed": protection_needed == "true",
+                                "notes": risk_notes if risk_notes else None
+                            },
+                            "notes": notes if notes else None
+                        }
+
+                        # Add contact info if not anonymous
+                        if not victim_data["anonymous"]:
+                            victim_data["contact_info"] = {
+                                "email": email if email else None,
+                                "phone": phone if phone else None,
+                                "preferred_contact": preferred_contact if preferred_contact else None
+                            }
+
+                        # Add case association if provided
+                        if case_id:
+                            victim_data["case_id"] = case_id
+
+                        # Submit to API
+                        try:
+                            headers = {"Authorization": f"Bearer {st.session_state.get('access_code', '')}"}
+                            res = requests.post(
+                                f"{API_BASE}/victims/",
+                                json=victim_data,
+                                headers=headers
+                            )
+
+                            if res.ok:
+                                result = res.json()
+                                st.success(f"✅ Victim/Witness record created successfully! ID: {result.get('id', 'Unknown')}")
+                            else:
+                                st.error(f"❌ Error creating record: {res.text}")
+                        except Exception as e:
+                            st.error(f"❌ An error occurred: {str(e)}")
+
+        elif vw_tab == "📋 View Records":
+            st.subheader("View Victim/Witness Records")
+
+            # Filters
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                type_filter = st.selectbox("Type", ["All", "victim", "witness", "both"])
+            with col2:
+                risk_filter = st.selectbox("Risk Level", ["All", "low", "medium", "high"])
+            with col3:
+                skip = st.number_input("Skip", min_value=0, value=0)
+            with col4:
+                limit = st.number_input("Limit", min_value=1, max_value=100, value=10)
+
+            if st.button("Load Records"):
+                params = {"skip": skip, "limit": limit}
+                if type_filter != "All":
+                    params["victim_type"] = type_filter
+                if risk_filter != "All":
+                    params["risk_level"] = risk_filter
+
+                try:
+                    headers = {"Authorization": f"Bearer {st.session_state.get('access_code', '')}"}
+                    res = requests.get(f"{API_BASE}/victims/", params=params, headers=headers)
+
+                    if res.ok:
+                        victims = res.json()
+                        if not victims:
+                            st.info("No records found matching your criteria.")
+                        else:
+                            st.write(f"Found {len(victims)} records")
+
+                            # Create export data
+                            flat_victims = []
+                            for v in victims:
+                                flat_record = {
+                                    "ID": v.get("id", "N/A"),
+                                    "Type": v.get("type", "N/A"),
+                                    "Name/Pseudonym": v.get("pseudonym", "N/A"),
+                                    "Anonymous": "Yes" if v.get("anonymous", True) else "No",
+                                    "Risk Level": v.get("risk_assessment", {}).get("level", "N/A"),
+                                    "Protection Needed": "Yes" if v.get("risk_assessment", {}).get("protection_needed", False) else "No",
+                                    "Age": v.get("demographics", {}).get("age", "N/A"),
+                                    "Gender": v.get("demographics", {}).get("gender", "N/A"),
+                                }
+                                flat_victims.append(flat_record)
+
+                            # Export options
+                            st.markdown("### Export Records")
+                            st.markdown(
+                                generate_csv_download(flat_victims, filename="victim_records.csv"),
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(
+                                generate_pdf_download(
+                                    flat_victims,
+                                    title="Victim/Witness Records",
+                                    filename="victim_records.pdf"
+                                ),
+                                unsafe_allow_html=True,
+                            )
+
+                            # Display records
+                            for victim in victims:
+                                risk_color = {
+                                    "low": "green",
+                                    "medium": "orange",
+                                    "high": "red"
+                                }.get(victim.get("risk_assessment", {}).get("level", ""), "gray")
+
+                                with st.expander(
+                                    f"🔒 {victim.get('pseudonym', 'Unknown')} - {victim.get('type', 'N/A').title()} "
+                                    f"(Risk: {victim.get('risk_assessment', {}).get('level', 'N/A').title()})"
+                                ):
+                                    col1, col2 = st.columns(2)
+
+                                    with col1:
+                                        st.write("**Basic Information**")
+                                        st.write(f"• **ID:** {victim.get('id', 'N/A')}")
+                                        st.write(f"• **Type:** {victim.get('type', 'N/A').title()}")
+                                        st.write(f"• **Anonymous:** {'Yes' if victim.get('anonymous', True) else 'No'}")
+                                        st.write(f"• **Name/Pseudonym:** {victim.get('pseudonym', 'N/A')}")
+
+                                        # Demographics
+                                        demographics = victim.get("demographics", {})
+                                        if any(demographics.values()):
+                                            st.write("**Demographics**")
+                                            if demographics.get("age"):
+                                                st.write(f"• **Age:** {demographics['age']}")
+                                            if demographics.get("gender"):
+                                                st.write(f"• **Gender:** {demographics['gender'].title()}")
+                                            if demographics.get("ethnicity"):
+                                                st.write(f"• **Ethnicity:** {demographics['ethnicity']}")
+                                            if demographics.get("occupation"):
+                                                st.write(f"• **Occupation:** {demographics['occupation']}")
+
+                                    with col2:
+                                        # Risk Assessment
+                                        risk_assessment = victim.get("risk_assessment", {})
+                                        st.write("**Risk Assessment**")
+                                        risk_level = risk_assessment.get("level", "N/A").title()
+                                        st.markdown(f"• **Level:** <span style='color: {risk_color}'>●</span> {risk_level}",
+                                                  unsafe_allow_html=True)
+                                        st.write(f"• **Protection Needed:** {'Yes' if risk_assessment.get('protection_needed', False) else 'No'}")
+
+                                        threats = risk_assessment.get("threats", [])
+                                        if threats:
+                                            st.write(f"• **Threats:** {', '.join([t.replace('_', ' ').title() for t in threats])}")
+
+                                        if risk_assessment.get("notes"):
+                                            st.write(f"• **Risk Notes:** {risk_assessment['notes']}")
+
+                                        # Contact Info (if not anonymous)
+                                        if not victim.get("anonymous", True):
+                                            contact_info = victim.get("contact_info", {})
+                                            if any(contact_info.values()):
+                                                st.write("**Contact Information**")
+                                                if contact_info.get("email"):
+                                                    st.write(f"• **Email:** {contact_info['email']}")
+                                                if contact_info.get("phone"):
+                                                    st.write(f"• **Phone:** {contact_info['phone']}")
+                                                if contact_info.get("preferred_contact"):
+                                                    st.write(f"• **Preferred Contact:** {contact_info['preferred_contact'].title()}")
+
+                                    # Additional Notes
+                                    if victim.get("notes"):
+                                        st.write("**Additional Notes**")
+                                        st.write(victim["notes"])
+
+                                    # Associated Case
+                                    if victim.get("case_id"):
+                                        st.write(f"**Associated Case:** {victim['case_id']}")
+
+                                    # Timestamps
+                                    if victim.get("created_at"):
+                                        st.caption(f"Created: {victim['created_at']}")
+                    else:
+                        st.error(f"❌ Error loading records: {res.text}")
+                except Exception as e:
+                    st.error(f"❌ An error occurred: {str(e)}")
+
+        elif vw_tab == "✏️ Edit Record":
+            st.subheader("Edit Victim/Witness Record")
+            st.info("🚧 Edit functionality will be implemented in the next update.")
+
+            # Placeholder for future implementation
+            victim_id = st.text_input("Victim/Witness ID")
+            if victim_id:
+                st.write("Edit form will be displayed here for the selected record.")
+
+        elif vw_tab == "🗑️ Delete Record":
+            st.subheader("Delete Victim/Witness Record")
+            st.warning("⚠️ This action cannot be undone. Please proceed with caution.")
+
+            victim_id = st.text_input("Victim/Witness ID to Delete")
+
+            if victim_id:
+                confirm_delete = st.checkbox(f"I confirm I want to delete record {victim_id}")
+
+                if st.button("Delete Record", type="secondary"):
+                    if confirm_delete:
+                        try:
+                            headers = {"Authorization": f"Bearer {st.session_state.get('access_code', '')}"}
+                            res = requests.delete(f"{API_BASE}/victims/{victim_id}", headers=headers)
+
+                            if res.ok:
+                                st.success("✅ Record deleted successfully!")
+                            else:
+                                st.error(f"❌ Error deleting record: {res.text}")
+                        except Exception as e:
+                            st.error(f"❌ An error occurred: {str(e)}")
+                    else:
+                        st.error("Please confirm the deletion by checking the checkbox above.")
+
+
+
+
+
+
 if "\U0001f5a5 Analytics Dashboard" in available_tabs:
     with tabs[available_tabs.index("\U0001f5a5 Analytics Dashboard")]:
         st.header("\U0001f5a5 System Analytics Dashboard")
@@ -928,3 +1722,4 @@ if "\U0001f5a5 Analytics Dashboard" in available_tabs:
             st_folium(m, width=1000, height=600, key="analytics_map")
         else:
             st.info("No geographic data available yet.")
+

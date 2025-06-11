@@ -8,6 +8,7 @@ from db import users_collection
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBasic()
 
+
 @router.post("/login")
 async def login(credentials: HTTPBasicCredentials = Depends(security)):
     """Login and receive JWT token"""
